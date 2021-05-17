@@ -10,23 +10,23 @@
 
 #define DEFAULT_SLOT_SIZE 4
 #define MAX_SLOT_SIZE 0x40000000
-
+// 这个结构用于记录，服务对应的别名，当应用层为某个服务命名时，会写到这里来
 struct handle_name {
-	char * name;
-	uint32_t handle;
+	char * name;// 服务别名
+	uint32_t handle;// 服务id
 };
 
 struct handle_storage {
-	struct rwlock lock;
+	struct rwlock lock;// 读写锁
 
-	uint32_t harbor;
-	uint32_t handle_index;
-	int slot_size;
-	struct skynet_context ** slot;
+	uint32_t harbor;// harbor id
+	uint32_t handle_index;// 创建下一个服务时，该服务的slot idx，一般会先判断该slot是否被占用，后面会详细讨论
+	int slot_size;// slot的大小，一定是2^n，初始值是4
+	struct skynet_context ** slot;// skynet_context list
 	
-	int name_cap;
-	int name_count;
-	struct handle_name *name;
+	int name_cap;// 别名列表大小，大小为2^n
+	int name_count;// 别名数量
+	struct handle_name *name;// 别名列表
 };
 
 static struct handle_storage *H = NULL;
@@ -132,8 +132,10 @@ skynet_handle_retireall() {
 			return;
 	}
 }
-
-struct skynet_context * 
+// 这个函数作用是根据handle查找对应的sc,handle无效就返回NULL.上的是读锁，查找过程很简单，将handle取模，
+// 然后判断索引处的元素的handle是否一致。引用计数保存在sc里，并没有在本模块中，其实应该放在本模块中更为纯粹，
+// sc里只需要知道如何释放自己就行了。查找成功会增加sc的计数(skynet_context_grab)。
+struct skynet_context *
 skynet_handle_grab(uint32_t handle) {
 	struct handle_storage *s = H;
 	struct skynet_context * result = NULL;

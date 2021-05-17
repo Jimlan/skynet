@@ -7,16 +7,18 @@
 #define GLOBALNAME_LENGTH 16
 #define REMOTE_MAX 256
 
+// remote_name 代表一个远程的skynet节点
 struct remote_name {
 	char name[GLOBALNAME_LENGTH];
 	uint32_t handle;
 };
 
+// skynet远程消息
 struct remote_message {
 	struct remote_name destination;
 	const void * message;
 	size_t sz;
-	int type;
+	int type;// 区分不同消息包的类型
 };
 
 void skynet_harbor_send(struct remote_message *rmsg, uint32_t source, int session);

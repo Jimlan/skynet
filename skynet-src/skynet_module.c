@@ -10,17 +10,18 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define MAX_MODULE_TYPE 32
+#define MAX_MODULE_TYPE 32// 最多可以加载的动态库数量
 
 struct modules {
-	int count;
-	struct spinlock lock;
-	const char * path;
-	struct skynet_module m[MAX_MODULE_TYPE];
+	int count;                                  // modules的数量
+	struct spinlock lock;                       // 自旋锁，避免多个线程同时向skynet_module写入数据，保证线程安全
+	const char * path;                          // 由skynet配置表中的cpath指定，一般包含./cservice/?.so路径
+	struct skynet_module m[MAX_MODULE_TYPE];    // 存放服务模块的数组，最多32类
 };
 
 static struct modules * M = NULL;
 
+// 将访问该so库的句柄和skynet_module对象关联
 static void *
 _try_open(struct modules *m, const char * name) {
 	const char *l;
@@ -101,16 +102,19 @@ open_sym(struct skynet_module *mod) {
 
 struct skynet_module * 
 skynet_module_query(const char * name) {
+    // @todo 这里为什么要查两次？
 	struct skynet_module * result = _query(name);
 	if (result)
 		return result;
 
 	SPIN_LOCK(M)
-
+    // 从modules列表中，查找对应的服务模块，如果找到则返回，否则到modules的path中去查找对应的so库
 	result = _query(name); // double check
 
 	if (result == NULL && M->count < MAX_MODULE_TYPE) {
 		int index = M->count;
+		// 到modules的path中去查找对应的so库，创建一个skynet_module对象（数据结构见上节），
+		// 将so库加载到内存，并将访问该so库的句柄和skynet_module对象关联
 		void * dl = _try_open(M,name);
 		if (dl) {
 			M->m[index].name = name;

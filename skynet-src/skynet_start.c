@@ -129,12 +129,14 @@ static void *
 thread_timer(void *p) {
 	struct monitor * m = p;
 	skynet_initthread(THREAD_TIMER);
+	// 用一个死循环处理
+	// usleep功能把进程挂起一段时间， 单位是微秒（百万分之一秒）
 	for (;;) {
 		skynet_updatetime();
 		skynet_socket_updatetime();
 		CHECK_ABORT
 		wakeup(m,m->count-1);
-		usleep(2500);
+		usleep(2500);//每2.5毫秒会tick一次，跨度达到10毫秒会正常执行一次。这样就控制了10毫秒的精度。
 		if (SIG) {
 			signal_hup();
 			SIG = 0;
@@ -160,6 +162,7 @@ thread_worker(void *p) {
 	skynet_initthread(THREAD_WORKER);
 	struct message_queue * q = NULL;
 	while (!m->quit) {
+        // skynet_context_message_dispatch 从全局消息队列中获取消息
 		q = skynet_context_message_dispatch(sm, q, weight);
 		if (q == NULL) {
 			if (pthread_mutex_lock(&m->mutex) == 0) {
@@ -180,8 +183,9 @@ thread_worker(void *p) {
 }
 
 static void
+// thread 工作线程的数量，从配置读取。默认8个 config中的thread = 8
 start(int thread) {
-	pthread_t pid[thread+3];
+	pthread_t pid[thread+3];    // 进程ID
 
 	struct monitor *m = skynet_malloc(sizeof(*m));
 	memset(m, 0, sizeof(*m));
@@ -202,9 +206,9 @@ start(int thread) {
 		exit(1);
 	}
 
-	create_thread(&pid[0], thread_monitor, m);
-	create_thread(&pid[1], thread_timer, m);
-	create_thread(&pid[2], thread_socket, m);
+	create_thread(&pid[0], thread_monitor, m);  // 创建一个监控线程
+	create_thread(&pid[1], thread_timer, m);    // 创建一个定时器线程
+	create_thread(&pid[2], thread_socket, m);   // 创建一个网络线程
 
 	static int weight[] = { 
 		-1, -1, -1, -1, 0, 0, 0, 0,
@@ -262,10 +266,11 @@ skynet_start(struct skynet_config * config) {
 	skynet_handle_init(config->harbor);
 	skynet_mq_init();
 	skynet_module_init(config->module_path);
-	skynet_timer_init();
+	skynet_timer_init();// 先初始化定时器
 	skynet_socket_init();
 	skynet_profile_enable(config->profile);
-
+    printf("logservice:%s, logger:%s", config->logservice, config->logger);
+    // logservice指名log服务的so库名称, logger字段则指定log的输出路径。
 	struct skynet_context *ctx = skynet_context_new(config->logservice, config->logger);
 	if (ctx == NULL) {
 		fprintf(stderr, "Can't launch %s service\n", config->logservice);
